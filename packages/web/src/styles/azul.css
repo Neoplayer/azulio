@@ -576,6 +576,7 @@ button {
 .az-wall-row {
   display: flex;
   gap: 4px;
+  padding: 2px;
 }
 .az-floor {
   margin-top: 13px;
