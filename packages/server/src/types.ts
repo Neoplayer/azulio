@@ -3,7 +3,7 @@
 // These are implemented by worker-2 (sessionStore, RoomRepository, RoomManager).
 // ---------------------------------------------------------------------------
 
-import type { Move, GameState, PlayerId, PlayerView } from '@azul/shared';
+import type { Move, GameState, PlayerId, PlayerView, BotLevel } from '@azul/shared';
 
 // ---------------------------------------------------------------------------
 // Session store
@@ -30,6 +30,8 @@ export interface SessionStore {
 export interface RoomPlayer {
   id: PlayerId;
   name: string;
+  /** Present for AI players; absent for humans. */
+  bot?: { level: BotLevel };
 }
 
 export type RoomStatus = 'waiting' | 'playing' | 'finished';
@@ -96,9 +98,10 @@ export interface RoomManager {
   /**
    * Start the game for the given players. Must be called once after callbacks
    * are wired and before submitMove.
+   * Bot players carry a `bot` descriptor; human players omit it.
    */
   startGame(
-    players: { id: string; name: string }[],
+    players: { id: string; name: string; bot?: { level: BotLevel } }[],
     seed: number,
     turnMs: number,
   ): void;

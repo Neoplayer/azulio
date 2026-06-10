@@ -12,6 +12,7 @@ import {
   type ClientMessage,
   type ServerMessage,
   type Room,
+  type BotLevel,
 } from './protocol.js';
 
 // ---------------------------------------------------------------------------
@@ -93,6 +94,25 @@ describe('parseClientMessage — valid messages', () => {
       expect(msg.expectedTurnSeq).toBe(5);
       expect(msg.move.color).toBe('blue');
     }
+  });
+
+  it('parses room:addBot with easy level', () => {
+    const msg = parseClientMessage({ type: 'room:addBot', roomId: 'room-1', level: 'easy' });
+    expect(msg.type).toBe('room:addBot');
+    if (msg.type === 'room:addBot') {
+      expect(msg.roomId).toBe('room-1');
+      expect(msg.level).toBe('easy');
+    }
+  });
+
+  it('parses room:addBot with medium level', () => {
+    const msg = parseClientMessage({ type: 'room:addBot', roomId: 'r2', level: 'medium' });
+    expect(msg.type).toBe('room:addBot');
+  });
+
+  it('parses room:addBot with hard level', () => {
+    const msg = parseClientMessage({ type: 'room:addBot', roomId: 'r3', level: 'hard' });
+    expect(msg.type).toBe('room:addBot');
   });
 
   it('parses game:move with center source and floor target', () => {
@@ -191,6 +211,18 @@ describe('parseClientMessage — invalid messages are rejected', () => {
       expectedTurnSeq: 2,
     };
     expect(() => parseClientMessage(raw)).toThrow();
+  });
+
+  it('rejects room:addBot with invalid level', () => {
+    expect(() =>
+      parseClientMessage({ type: 'room:addBot', roomId: 'r1', level: 'expert' }),
+    ).toThrow();
+  });
+
+  it('rejects room:addBot with missing roomId', () => {
+    expect(() =>
+      parseClientMessage({ type: 'room:addBot', level: 'easy' }),
+    ).toThrow();
   });
 
   it('rejects room:create with maxPlayers = 1', () => {
@@ -296,5 +328,28 @@ describe('type exports', () => {
       createdAt: new Date().toISOString(),
     };
     expect(room.status).toBe('waiting');
+  });
+
+  it('Room players may carry optional bot descriptor', () => {
+    const room: Room = {
+      id: 'r2',
+      name: 'Bot Room',
+      hostId: 'p1',
+      maxPlayers: 2,
+      players: [
+        { id: 'p1', name: 'Alice' },
+        { id: 'bot:easy:1', name: 'Bot (Easy)', bot: { level: 'easy' } },
+      ],
+      status: 'waiting',
+      isPrivate: false,
+      createdAt: new Date().toISOString(),
+    };
+    const botPlayer = room.players.find((p) => p.bot !== undefined);
+    expect(botPlayer?.bot?.level).toBe('easy');
+  });
+
+  it('BotLevel type is exported and usable', () => {
+    const level: BotLevel = 'medium';
+    expect(['easy', 'medium', 'hard']).toContain(level);
   });
 });

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Color, Move, PlayerView, Room, ServerMessage, ClientMessage } from '@azul/shared';
+import type { BotLevel, Color, Move, PlayerView, Room, ServerMessage, ClientMessage } from '@azul/shared';
 import { createSession, wsUrl } from './lib/api';
 
 export type Screen = 'login' | 'lobby' | 'room' | 'game' | 'results';
@@ -40,6 +40,7 @@ interface State {
   createRoom: (name: string, maxPlayers: number) => void;
   joinRoom: (roomId: string) => void;
   leaveRoom: () => void;
+  addBot: (level: BotLevel) => void;
   startGame: () => void;
   selectTile: (source: Move['source'], color: Color) => void;
   cancelSelection: () => void;
@@ -247,6 +248,11 @@ export const useStore = create<State>((set, get) => {
       localStorage.removeItem(LS.roomId);
       set({ room: null, screen: 'lobby' });
       send({ type: 'lobby:subscribe' });
+    },
+
+    addBot(level: BotLevel) {
+      const room = get().room;
+      if (room) send({ type: 'room:addBot', roomId: room.id, level });
     },
 
     startGame() {

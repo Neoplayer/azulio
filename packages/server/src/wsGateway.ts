@@ -7,7 +7,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import type { IncomingMessage } from 'http';
 import { parseClientMessage } from '@azul/shared';
-import type { PlayerId } from '@azul/shared';
+import type { PlayerId, BotLevel } from '@azul/shared';
 import { toPlayerView } from '@azul/engine';
 import type {
   SessionStore,
@@ -72,6 +72,8 @@ export function attachWsGateway(deps: WsGatewayDeps): () => void {
   const managers = new Map<string, RoomManager>();
   /** Sockets subscribed to lobby updates. */
   const lobbySubscribers = new Set<WebSocket>();
+  /** roomId → next bot index (monotonic; never reused so bot ids stay unique). */
+  const nextBotIndex = new Map<string, number>();
 
   // ---------------------------------------------------------------------------
   // Lobby helpers
@@ -79,6 +81,34 @@ export function attachWsGateway(deps: WsGatewayDeps): () => void {
 
   function broadcastLobby(): void {
     broadcast(lobbySubscribers, { type: 'lobby:state', rooms: roomRepository.listWaiting() });
+  }
+
+  /**
+   * Count CONNECTED HUMAN players in a room. A human is a player without a `bot`
+   * descriptor whose socket is currently OPEN. `excludeWs` lets callers ignore a
+   * socket that is mid-close (its readyState may still read OPEN momentarily).
+   */
+  function countConnectedHumans(roomId: string, excludeWs?: WebSocket): number {
+    const room = roomRepository.get(roomId);
+    if (!room) return 0;
+    let count = 0;
+    for (const p of room.players) {
+      if (p.bot !== undefined) continue;
+      const ws = socketByPlayer.get(p.id);
+      if (ws && ws !== excludeWs && ws.readyState === WebSocket.OPEN) count++;
+    }
+    return count;
+  }
+
+  /**
+   * Tear down a room's active game: dispose the manager (cancelling bot/timeout
+   * timers), drop it from the registry, and mark the room finished.
+   */
+  function teardownGame(roomId: string): void {
+    managers.get(roomId)?.dispose();
+    managers.delete(roomId);
+    nextBotIndex.delete(roomId);
+    try { roomRepository.update(roomId, { status: 'finished' }); } catch { /* already gone */ }
   }
 
   // ---------------------------------------------------------------------------
@@ -114,8 +144,9 @@ export function attachWsGateway(deps: WsGatewayDeps): () => void {
     manager.onOver = (scores, winnerIds) => {
       const sockets = roomSockets();
       broadcast(sockets, { type: 'game:over', scores, winnerIds });
-      // Mark room finished.
-      try { roomRepository.update(roomId, { status: 'finished' }); } catch { /* already gone */ }
+      // Game is over: dispose + remove the manager so a later reconnect gets
+      // game:aborted 'not_found' (correct post-game behavior) and no timers leak.
+      teardownGame(roomId);
       broadcastLobby();
     };
   }
@@ -238,6 +269,16 @@ export function attachWsGateway(deps: WsGatewayDeps): () => void {
     const room = roomRepository.get(msg.roomId);
     if (!room) return;
 
+    // If a live game is in progress and the leaver is the last connected human,
+    // tear the game down (don't leave bots self-playing into the void).
+    if (
+      room.status === 'playing' &&
+      managers.has(msg.roomId) &&
+      countConnectedHumans(msg.roomId, ws) === 0
+    ) {
+      teardownGame(msg.roomId);
+    }
+
     const newPlayers = room.players.filter((p) => p.id !== ctx.playerId);
     if (newPlayers.length === 0) {
       roomRepository.delete(msg.roomId);
@@ -267,7 +308,7 @@ export function attachWsGateway(deps: WsGatewayDeps): () => void {
       return;
     }
     if (room.players.length < 2) {
-      send(ws, { type: 'error', code: 'NOT_ENOUGH_PLAYERS', message: 'Need at least 2 players' });
+      send(ws, { type: 'error', code: 'NOT_ENOUGH_PLAYERS', message: 'Need at least 2 players (including bots)' });
       return;
     }
     if (room.status !== 'waiting') {
@@ -295,8 +336,55 @@ export function attachWsGateway(deps: WsGatewayDeps): () => void {
     broadcastLobby();
 
     // Start the game — this fires onState and onTurn immediately.
+    // Pass full player descriptors so the manager knows which are bots.
     const seed = Math.floor(Math.random() * 2 ** 31);
-    manager.startGame(room.players, seed, 60_000);
+    const playerInfos = room.players.map((p) => ({
+      id: p.id,
+      name: p.name,
+      ...(p.bot ? { bot: p.bot } : {}),
+    }));
+    manager.startGame(playerInfos, seed, 60_000);
+  }
+
+  function handleRoomAddBot(
+    ws: WebSocket,
+    msg: { type: 'room:addBot'; roomId: string; level: BotLevel },
+  ): void {
+    const ctx = ctxMap.get(ws);
+    if (!ctx) return;
+
+    const room = roomRepository.get(msg.roomId);
+    if (!room) {
+      send(ws, { type: 'error', code: 'ROOM_NOT_FOUND', message: 'Room not found' });
+      return;
+    }
+    if (room.hostId !== ctx.playerId) {
+      send(ws, { type: 'error', code: 'NOT_HOST', message: 'Only host can add bots' });
+      return;
+    }
+    if (room.status !== 'waiting') {
+      send(ws, { type: 'error', code: 'ROOM_NOT_WAITING', message: 'Room is not waiting' });
+      return;
+    }
+    if (room.players.length >= room.maxPlayers) {
+      send(ws, { type: 'error', code: 'ROOM_FULL', message: 'Room is full' });
+      return;
+    }
+
+    // Generate a unique bot id from a monotonic per-room counter so that
+    // removing and re-adding a bot can never collide with a surviving one.
+    const botIndex = (nextBotIndex.get(msg.roomId) ?? 0) + 1;
+    nextBotIndex.set(msg.roomId, botIndex);
+    const botId = `bot:${msg.level}:${botIndex}`;
+    const levelDisplay = msg.level.charAt(0).toUpperCase() + msg.level.slice(1);
+    const botName = `Bot (${levelDisplay})`;
+
+    const updated = roomRepository.update(msg.roomId, {
+      players: [...room.players, { id: botId, name: botName, bot: { level: msg.level } }],
+    });
+
+    broadcastToRoom(msg.roomId, { type: 'room:state', room: updated });
+    broadcastLobby();
   }
 
   function handleGameMove(
@@ -401,6 +489,9 @@ export function attachWsGateway(deps: WsGatewayDeps): () => void {
         case 'room:start':
           handleRoomStart(ws, msg);
           break;
+        case 'room:addBot':
+          handleRoomAddBot(ws, msg);
+          break;
         case 'game:move':
           handleGameMove(ws, msg);
           break;
@@ -426,6 +517,13 @@ export function attachWsGateway(deps: WsGatewayDeps): () => void {
           const manager = managers.get(ctx.roomId);
           if (manager) {
             manager.setConnected(ctx.playerId, false);
+            // If this was the last connected human in a live game, tear it down
+            // so a bot game doesn't keep self-playing after everyone has left.
+            // Exclude this closing socket from the count (it may still read OPEN).
+            if (countConnectedHumans(ctx.roomId, ws) === 0) {
+              teardownGame(ctx.roomId);
+              broadcastLobby();
+            }
           }
           broadcastPlayerConnection(ctx.roomId, ctx.playerId, false, ws);
         }
@@ -450,5 +548,6 @@ export function attachWsGateway(deps: WsGatewayDeps): () => void {
       manager.dispose();
     }
     managers.clear();
+    nextBotIndex.clear();
   };
 }

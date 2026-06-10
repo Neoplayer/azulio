@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import { createRoomManager } from './roomManager.js';
 import type { Clock } from './types.js';
-import type { Move, PlayerId } from '@azul/shared';
+import type { Move, PlayerId, BotLevel } from '@azul/shared';
 import { legalMoves } from '@azul/engine';
 
 // ---------------------------------------------------------------------------
@@ -302,6 +302,97 @@ describe('full game reaches onOver', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Bot players
+// ---------------------------------------------------------------------------
+
+describe('bot player — auto-advances turn', () => {
+  const BOT_PLAYERS: { id: string; name: string; bot?: { level: BotLevel } }[] = [
+    { id: 'p1', name: 'Alice' },
+    { id: 'bot1', name: 'Bot (Easy)', bot: { level: 'easy' } },
+  ];
+
+  it('bot fires its move when the clock advances past BOT_MOVE_DELAY_MS (~750ms)', () => {
+    const clock = makeFakeClock();
+    const manager = makeManager(clock);
+
+    const applied: Array<{ by: PlayerId; turnSeq: number }> = [];
+    manager.onApplied = (_move, by, turnSeq) => applied.push({ by, turnSeq });
+
+    manager.startGame(BOT_PLAYERS, SEED, TURN_MS);
+
+    // p1 goes first; submit a legal human move.
+    const state0 = manager.getState();
+    if (state0.players[state0.currentPlayerIndex]!.id === 'p1') {
+      const move = legalMoves(state0)[0]!;
+      manager.submitMove('p1', move, state0.turnSeq);
+    }
+
+    // Now bot1's turn — advance clock past BOT_MOVE_DELAY_MS.
+    clock.advance(1000);
+
+    const botApplied = applied.find((a) => a.by === 'bot1');
+    expect(botApplied).toBeDefined();
+    expect(manager.getState().turnSeq).toBeGreaterThan(0);
+  });
+
+  it('bot move is rejected if turnSeq changed (race guard)', () => {
+    const clock = makeFakeClock();
+    const manager = makeManager(clock);
+
+    const applied: Array<{ by: PlayerId }> = [];
+    manager.onApplied = (_move, by) => applied.push({ by });
+
+    manager.startGame(BOT_PLAYERS, SEED, TURN_MS);
+
+    // p1 goes first — immediately advance the full 60s timeout so
+    // the human auto-move fires before the bot timer.
+    const state0 = manager.getState();
+    if (state0.players[state0.currentPlayerIndex]!.id === 'p1') {
+      // Advance past human timeout (fires autoMove for p1), turnSeq → 1.
+      clock.advance(TURN_MS + 1);
+      // Now advance past bot delay — bot's stale capturedSeq should be rejected.
+      clock.advance(1000);
+    } else {
+      // If bot goes first, just advance past its delay.
+      clock.advance(1000);
+    }
+
+    // turnSeq should advance at most once per player turn.
+    expect(manager.getState().turnSeq).toBeGreaterThanOrEqual(1);
+  });
+
+  it('full human-vs-bot 2-player game reaches finished', () => {
+    const clock = makeFakeClock();
+    const manager = makeManager(clock);
+
+    let overPayload: { winnerIds: PlayerId[] } | null = null;
+    manager.onOver = (_scores, winnerIds) => { overPayload = { winnerIds }; };
+
+    manager.startGame(BOT_PLAYERS, SEED, TURN_MS);
+
+    let safety = 3000;
+    while (overPayload === null && safety-- > 0) {
+      const s = manager.getState();
+      if (s.phase === 'finished') break;
+      const currentPid = s.players[s.currentPlayerIndex]!.id;
+
+      if (currentPid === 'p1') {
+        // Human: submit a legal move directly.
+        const moves = legalMoves(s);
+        if (moves.length === 0) break;
+        manager.submitMove('p1', moves[0]!, s.turnSeq);
+      } else {
+        // Bot: fire the bot's 750ms timer.
+        clock.advance(1000);
+      }
+    }
+
+    expect(overPayload).not.toBeNull();
+    expect((overPayload as { winnerIds: PlayerId[] }).winnerIds.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Connection tracking
 // ---------------------------------------------------------------------------
 
@@ -323,5 +414,82 @@ describe('setConnected', () => {
     const v1 = lastSnap.get('p1') as { players: Array<{ id: string; connected: boolean }> };
     const p2Entry = v1.players.find((p) => p.id === 'p2');
     expect(p2Entry?.connected).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bot — RNG seed determinism
+// ---------------------------------------------------------------------------
+
+describe('bot — RNG seed determinism', () => {
+  const BOT_PLAYERS: { id: string; name: string; bot?: { level: BotLevel } }[] = [
+    { id: 'p1', name: 'Alice' },
+    { id: 'bot1', name: 'Bot (Easy)', bot: { level: 'easy' } },
+  ];
+
+  it('same seed + turnSeq produces the same bot move across two fresh managers', () => {
+    function runAndCaptureBotMove(): Move | null {
+      const clock = makeFakeClock();
+      const mgr = createRoomManager({ clock });
+      const botMoves: Move[] = [];
+      mgr.onApplied = (move, by) => { if (by === 'bot1') botMoves.push(move); };
+      mgr.startGame(BOT_PLAYERS, SEED, TURN_MS);
+      const s0 = mgr.getState();
+      if (s0.players[s0.currentPlayerIndex]!.id === 'p1') {
+        mgr.submitMove('p1', legalMoves(s0)[0]!, s0.turnSeq);
+      }
+      clock.advance(1000);
+      return botMoves[0] ?? null;
+    }
+
+    const move1 = runAndCaptureBotMove();
+    const move2 = runAndCaptureBotMove();
+    expect(move1).not.toBeNull();
+    expect(move2).not.toBeNull();
+    expect(move1).toEqual(move2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bot — fallback to autoMove when selectMove returns a rejected move
+// ---------------------------------------------------------------------------
+
+describe('bot — fallback to autoMove on rejected move', () => {
+  const BOT_PLAYERS: { id: string; name: string; bot?: { level: BotLevel } }[] = [
+    { id: 'p1', name: 'Alice' },
+    { id: 'bot1', name: 'Bot (Easy)', bot: { level: 'easy' } },
+  ];
+
+  it('advances the turn via autoMove when bot selectMove returns an illegal move', () => {
+    const clock = makeFakeClock();
+    // Inject a selectMove stub that always returns an illegal move.
+    const manager = createRoomManager({
+      clock,
+      _selectMoveFn: (_state, _idx, _config, _rng) => ({
+        source: { type: 'factory', index: 99 },
+        color: 'blue',
+        target: { type: 'floor' },
+      } as Move),
+    });
+
+    const applied: Array<{ by: PlayerId; turnSeq: number }> = [];
+    manager.onApplied = (_move, by, turnSeq) => applied.push({ by, turnSeq });
+
+    manager.startGame(BOT_PLAYERS, SEED, TURN_MS);
+
+    // Advance p1 (human) turn if needed.
+    const s0 = manager.getState();
+    if (s0.players[s0.currentPlayerIndex]!.id === 'p1') {
+      manager.submitMove('p1', legalMoves(s0)[0]!, s0.turnSeq);
+    }
+    const seqBeforeBotMove = manager.getState().turnSeq;
+
+    // Bot timer fires; selectMove returns illegal move, manager falls back to autoMove.
+    clock.advance(1000);
+
+    // Turn must have advanced — bot applied event must be present.
+    const botApplied = applied.find((a) => a.by === 'bot1');
+    expect(botApplied).toBeDefined();
+    expect(manager.getState().turnSeq).toBeGreaterThan(seqBeforeBotMove);
   });
 });

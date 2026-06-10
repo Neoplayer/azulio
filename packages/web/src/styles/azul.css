@@ -894,6 +894,19 @@ button {
   letter-spacing: 1px;
   color: var(--az-emerald);
 }
+.az-tag-bot {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: var(--az-porcelain);
+  background: var(--az-cobalt);
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.az-avatar-bot {
+  background: linear-gradient(180deg, var(--az-cobalt-2), var(--az-cobalt-deep)) !important;
+}
 
 /* results */
 .az-result-list {

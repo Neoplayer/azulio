@@ -5,9 +5,11 @@ import {
   FACTORY_COUNT_BY_PLAYERS,
 } from '@azul/shared';
 import type { Color, GameState, PlayerBoard, PlayerSlot } from '@azul/shared';
+export { makeRng } from './rng.js';
 import { makeRng, shuffle } from './rng.js';
 
 export { isLegalMove, legalMoves, applyMove, wallColumnForColor } from './moves.js';
+export * from './bot/index.js';
 export { isOfferPhaseOver, resolveTiling, scorePlacement } from './tiling.js';
 export { isGameOver, startNextRound } from './nextRound.js';
 export { finalizeScores, autoMove, toPlayerView } from './finalize.js';

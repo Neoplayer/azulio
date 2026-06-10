@@ -1,5 +1,14 @@
 import { useState } from 'react';
+import type { BotLevel } from '@azul/shared';
 import { useStore } from '../store';
+
+const BOT_LEVELS: { level: BotLevel; label: string }[] = [
+  { level: 'easy', label: 'Лёгкий' },
+  { level: 'medium', label: 'Средний' },
+  { level: 'hard', label: 'Сложный' },
+];
+
+const BOT_LABEL = Object.fromEntries(BOT_LEVELS.map((b) => [b.level, b.label])) as Record<BotLevel, string>;
 
 function Brand({ sub }: { sub: string }) {
   return (
@@ -143,12 +152,15 @@ export function LobbyScreen() {
 export function RoomScreen() {
   const room = useStore((s) => s.room);
   const session = useStore((s) => s.session);
+  const addBot = useStore((s) => s.addBot);
   const startGame = useStore((s) => s.startGame);
   const leaveRoom = useStore((s) => s.leaveRoom);
+  const [botLevel, setBotLevel] = useState<BotLevel>('medium');
   if (!room || !session) return null;
 
   const isHost = room.hostId === session.playerId;
   const canStart = isHost && room.players.length >= 2;
+  const isFull = room.players.length >= room.maxPlayers;
 
   return (
     <div className="az-screen">
@@ -158,10 +170,14 @@ export function RoomScreen() {
         <div className="az-players">
           {room.players.map((p) => (
             <div key={p.id} className="az-playerrow">
-              <div className="az-avatar" style={{ width: 30, height: 30, fontSize: 15 }}>
-                {p.name[0] ?? '?'}
+              <div
+                className={'az-avatar' + (p.bot ? ' az-avatar-bot' : '')}
+                style={{ width: 30, height: 30, fontSize: 15 }}
+              >
+                {p.bot ? '🤖' : (p.name[0] ?? '?')}
               </div>
               <span className="az-playerrow-name">{p.name}</span>
+              {p.bot && <span className="az-tag-bot">БОТ · {BOT_LABEL[p.bot.level]}</span>}
               {p.id === room.hostId && <span className="az-tag-host">ХОЗЯИН</span>}
               {p.id === session.playerId && <span className="az-tag-you">вы</span>}
             </div>
@@ -176,6 +192,27 @@ export function RoomScreen() {
           ))}
         </div>
       </div>
+
+      {isHost && !isFull && (
+        <div className="az-panel">
+          <label className="az-field-label">Добавить бота</label>
+          <div className="az-row">
+            {BOT_LEVELS.map((b) => (
+              <button
+                key={b.level}
+                className={'az-btn ' + (botLevel === b.level ? 'az-btn-cobalt' : 'az-btn-ghost')}
+                onClick={() => setBotLevel(b.level)}
+              >
+                {b.label}
+              </button>
+            ))}
+          </div>
+          <div style={{ height: 12 }} />
+          <button className="az-btn az-btn-ghost" onClick={() => addBot(botLevel)}>
+            + Добавить бота ({BOT_LABEL[botLevel]})
+          </button>
+        </div>
+      )}
 
       {isHost ? (
         <button className="az-btn az-btn-gold" disabled={!canStart} onClick={startGame}>

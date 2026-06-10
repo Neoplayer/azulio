@@ -13,6 +13,18 @@ import { z } from 'zod';
 const COLORS = ['blue', 'yellow', 'red', 'black', 'white'] as const;
 
 // ---------------------------------------------------------------------------
+// Bot types — defined locally to avoid a shared→engine dependency cycle.
+// ---------------------------------------------------------------------------
+
+/**
+ * AI difficulty level. Mirrors the same type in @azul/engine/bot/types.ts (structurally identical).
+ * Kept separate to avoid a shared↔engine dependency cycle.
+ * The compile-time mutual-assignability guard lives in packages/engine/src/bot/bot-types.test.ts.
+ */
+export type BotLevel = 'easy' | 'medium' | 'hard';
+const BotLevelSchema = z.enum(['easy', 'medium', 'hard']);
+
+// ---------------------------------------------------------------------------
 // Reusable sub-schemas (shared between client and server messages)
 // ---------------------------------------------------------------------------
 
@@ -50,13 +62,17 @@ export interface Room {
   name: string;
   hostId: string;
   maxPlayers: number;
-  players: { id: string; name: string }[];
+  players: { id: string; name: string; bot?: { level: BotLevel } }[];
   status: 'waiting' | 'playing' | 'finished';
   isPrivate: boolean;
   createdAt: string;
 }
 
-const RoomPlayerSchema = z.object({ id: z.string(), name: z.string() });
+const RoomPlayerSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  bot: z.object({ level: BotLevelSchema }).optional(),
+});
 
 const RoomSchema = z.object({
   id: z.string(),
@@ -122,6 +138,12 @@ const PingSchema = z.object({
   type: z.literal('ping'),
 });
 
+const RoomAddBotSchema = z.object({
+  type: z.literal('room:addBot'),
+  roomId: z.string(),
+  level: BotLevelSchema,
+});
+
 /**
  * Discriminated union of every valid client→server message.
  * The `type` field is the discriminant.
@@ -135,6 +157,7 @@ export const ClientMessageSchema = z.discriminatedUnion('type', [
   RoomStartSchema,
   GameMoveSchema,
   PingSchema,
+  RoomAddBotSchema,
 ]);
 
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;

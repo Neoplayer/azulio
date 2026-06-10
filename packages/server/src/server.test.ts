@@ -528,6 +528,130 @@ describe('WebSocket — full game flow', () => {
     }
   }, 30_000);
 
+  it('1-human + 1-bot room: host adds a bot, starts game, bot auto-plays its turn', async () => {
+    const srv = await startServer();
+    let alice: TestClient | null = null;
+
+    try {
+      const aliceSession = await createSession(srv.url, 'Alice');
+      alice = await connectAuthenticated(srv.wsUrl, aliceSession.token);
+
+      // Alice creates a 2-player room.
+      alice.send({ type: 'room:create', name: 'Bot Room', maxPlayers: 2, isPrivate: false });
+      const { room: { id: roomId } } = await alice.awaitMessage('room:state') as { room: { id: string } };
+
+      // Alice adds a bot.
+      alice.send({ type: 'room:addBot', roomId, level: 'easy' });
+      const roomWithBot = await alice.awaitMessage('room:state') as {
+        room: { players: Array<{ id: string; name: string; bot?: { level: string } }> };
+      };
+      const botPlayer = roomWithBot.room.players.find((p) => p.bot !== undefined);
+      expect(botPlayer).toBeDefined();
+      expect(botPlayer?.bot?.level).toBe('easy');
+
+      // Alice starts the game.
+      alice.send({ type: 'room:start', roomId });
+
+      // Drain: room:state + game:state + game:turn.
+      let gameStateMsg: { view: { currentPlayerId: string; turnSeq: number } } | null = null;
+      let currentPlayerId = '';
+      for (let i = 0; i < 10; i++) {
+        const msg = await alice.awaitAny(3000);
+        const t = msg['type'] as string;
+        if (t === 'game:state') {
+          gameStateMsg = msg as unknown as typeof gameStateMsg;
+          currentPlayerId = (msg as { view: { currentPlayerId: string } }).view.currentPlayerId;
+        }
+        if (t === 'game:turn') break;
+      }
+      expect(gameStateMsg).not.toBeNull();
+
+      // If the bot goes first, advance the fake clock to fire its timer.
+      if (currentPlayerId.startsWith('bot:')) {
+        srv.clock.tick(1000);
+        await flushMicrotasks();
+        // Bot should have auto-played: expect game:applied.
+        const applied = await alice.awaitMessage('game:applied', 5000);
+        expect(applied['type']).toBe('game:applied');
+      } else {
+        // Human (Alice) goes first — just verify the game started.
+        expect(currentPlayerId).toBe(aliceSession.playerId);
+      }
+    } finally {
+      alice?.close();
+      await srv.close();
+    }
+  }, 30_000);
+
+  it('non-host cannot add a bot', async () => {
+    const srv = await startServer();
+    let alice: TestClient | null = null;
+    let bob: TestClient | null = null;
+
+    try {
+      const aliceSession = await createSession(srv.url, 'Alice');
+      const bobSession = await createSession(srv.url, 'Bob');
+
+      alice = await connectAuthenticated(srv.wsUrl, aliceSession.token);
+      bob = await connectAuthenticated(srv.wsUrl, bobSession.token);
+
+      // Alice creates a room (she is host).
+      alice.send({ type: 'room:create', name: 'Room', maxPlayers: 3, isPrivate: false });
+      const { room: { id: roomId } } = await alice.awaitMessage('room:state') as { room: { id: string } };
+
+      // Bob joins.
+      bob.send({ type: 'room:join', roomId });
+      await bob.awaitMessage('room:state');
+      await alice.awaitMessage('room:state');
+
+      // Bob tries to add a bot — should get NOT_HOST error.
+      bob.send({ type: 'room:addBot', roomId, level: 'easy' });
+      const err = await bob.awaitMessage('error', 3000) as { code: string };
+      expect(err.code).toBe('NOT_HOST');
+
+      void bobSession;
+    } finally {
+      alice?.close();
+      bob?.close();
+      await srv.close();
+    }
+  }, 30_000);
+
+  it('addBot rejected when room is full', async () => {
+    const srv = await startServer();
+    let alice: TestClient | null = null;
+    let bob: TestClient | null = null;
+
+    try {
+      const aliceSession = await createSession(srv.url, 'Alice');
+      const bobSession = await createSession(srv.url, 'Bob');
+
+      alice = await connectAuthenticated(srv.wsUrl, aliceSession.token);
+      bob = await connectAuthenticated(srv.wsUrl, bobSession.token);
+
+      // Create a 2-player room.
+      alice.send({ type: 'room:create', name: 'Room', maxPlayers: 2, isPrivate: false });
+      const { room: { id: roomId } } = await alice.awaitMessage('room:state') as { room: { id: string } };
+
+      // Bob joins — room is now full.
+      bob.send({ type: 'room:join', roomId });
+      await bob.awaitMessage('room:state');
+      await alice.awaitMessage('room:state');
+
+      // Alice tries to add a bot to a full room — should get ROOM_FULL error.
+      alice.send({ type: 'room:addBot', roomId, level: 'easy' });
+      const err = await alice.awaitMessage('error', 3000) as { code: string };
+      expect(err.code).toBe('ROOM_FULL');
+
+      void aliceSession;
+      void bobSession;
+    } finally {
+      alice?.close();
+      bob?.close();
+      await srv.close();
+    }
+  }, 30_000);
+
   it('timeout: advance injected clock past deadline → server auto-moves, game:turn for next player', async () => {
     const srv = await startServer();
     let alice: TestClient | null = null;
@@ -580,6 +704,165 @@ describe('WebSocket — full game flow', () => {
     } finally {
       alice?.close();
       bob?.close();
+      await srv.close();
+    }
+  }, 30_000);
+
+  it('human-vs-bot: human disconnects → game torn down, bot stops, reconnect aborted', async () => {
+    const srv = await startServer();
+    let alice: TestClient | null = null;
+    let alice2: TestClient | null = null;
+
+    try {
+      const aliceSession = await createSession(srv.url, 'Alice');
+      alice = await connectAuthenticated(srv.wsUrl, aliceSession.token);
+
+      alice.send({ type: 'room:create', name: 'Bot Room', maxPlayers: 2, isPrivate: false });
+      const { room: { id: roomId } } = await alice.awaitMessage('room:state') as { room: { id: string } };
+
+      alice.send({ type: 'room:addBot', roomId, level: 'easy' });
+      await alice.awaitMessage('room:state');
+
+      alice.send({ type: 'room:start', roomId });
+      await alice.awaitMessage('game:state');
+      await alice.awaitMessage('game:turn');
+
+      // The only human disconnects → the live game must be torn down.
+      alice.close();
+      alice = null;
+      await flushMicrotasks();
+
+      // Advancing past the bot move delay must NOT resurrect the game.
+      srv.clock.tick(65_000);
+      await flushMicrotasks();
+
+      // Reconnect with the same token+roomId → manager gone → game:aborted not_found.
+      alice2 = await connect(srv.wsUrl);
+      alice2.send({ type: 'hello', token: aliceSession.token, roomId });
+      await alice2.awaitMessage('hello:ok');
+      const aborted = await alice2.awaitMessage('game:aborted', 5000) as { reason: string };
+      expect(aborted.reason).toBe('not_found');
+    } finally {
+      alice?.close();
+      alice2?.close();
+      await srv.close();
+    }
+  }, 30_000);
+
+  it('game played to completion → manager removed; reconnect after over → aborted', async () => {
+    const srv = await startServer();
+    let alice: TestClient | null = null;
+    let alice2: TestClient | null = null;
+
+    try {
+      const aliceSession = await createSession(srv.url, 'Alice');
+      alice = await connectAuthenticated(srv.wsUrl, aliceSession.token);
+
+      alice.send({ type: 'room:create', name: 'Finish Room', maxPlayers: 2, isPrivate: false });
+      const { room: { id: roomId } } = await alice.awaitMessage('room:state') as { room: { id: string } };
+
+      alice.send({ type: 'room:addBot', roomId, level: 'easy' });
+      await alice.awaitMessage('room:state');
+
+      alice.send({ type: 'room:start', roomId });
+      await alice.awaitMessage('game:state');
+      await alice.awaitMessage('game:turn');
+
+      // Drive the whole game to completion by timing out every turn
+      // (human turns auto-move on deadline; bot turns fire on their delay).
+      for (let i = 0; i < 400; i++) srv.clock.tick(65_000);
+
+      const over = await alice.awaitMessage('game:over', 10_000);
+      expect(over['type']).toBe('game:over');
+
+      // After game over the manager must be removed → reconnect yields not_found.
+      alice2 = await connect(srv.wsUrl);
+      alice2.send({ type: 'hello', token: aliceSession.token, roomId });
+      await alice2.awaitMessage('hello:ok');
+      const aborted = await alice2.awaitMessage('game:aborted', 5000) as { reason: string };
+      expect(aborted.reason).toBe('not_found');
+    } finally {
+      alice?.close();
+      alice2?.close();
+      await srv.close();
+    }
+  }, 60_000);
+
+  it('multi-human game: one human disconnects → game continues (manager not disposed)', async () => {
+    const srv = await startServer();
+    let alice: TestClient | null = null;
+    let bob: TestClient | null = null;
+    let alice2: TestClient | null = null;
+
+    try {
+      const aliceSession = await createSession(srv.url, 'Alice');
+      const bobSession = await createSession(srv.url, 'Bob');
+
+      alice = await connectAuthenticated(srv.wsUrl, aliceSession.token);
+      bob = await connectAuthenticated(srv.wsUrl, bobSession.token);
+
+      alice.send({ type: 'room:create', name: 'Room', maxPlayers: 2, isPrivate: false });
+      const { room: { id: roomId } } = await alice.awaitMessage('room:state') as { room: { id: string } };
+
+      bob.send({ type: 'room:join', roomId });
+      await bob.awaitMessage('room:state');
+      await alice.awaitMessage('room:state');
+
+      alice.send({ type: 'room:start', roomId });
+      await Promise.all([alice.awaitMessage('game:state'), bob.awaitMessage('game:state')]);
+      await Promise.all([alice.awaitMessage('game:turn'), bob.awaitMessage('game:turn')]);
+
+      // Alice disconnects but Bob remains connected → game must NOT be torn down.
+      alice.close();
+      alice = null;
+      const conn = await bob.awaitMessage('player:connection', 5000) as {
+        playerId: string;
+        connected: boolean;
+      };
+      expect(conn.connected).toBe(false);
+
+      // Reconnect Alice → manager still alive → she receives a fresh game:state.
+      alice2 = await connect(srv.wsUrl);
+      alice2.send({ type: 'hello', token: aliceSession.token, roomId });
+      await alice2.awaitMessage('hello:ok');
+      const fresh = await alice2.awaitMessage('game:state', 5000);
+      expect(fresh['type']).toBe('game:state');
+
+      void bobSession;
+    } finally {
+      alice?.close();
+      alice2?.close();
+      bob?.close();
+      await srv.close();
+    }
+  }, 30_000);
+
+  it('adding multiple bots yields unique, non-colliding ids', async () => {
+    const srv = await startServer();
+    let alice: TestClient | null = null;
+
+    try {
+      const aliceSession = await createSession(srv.url, 'Alice');
+      alice = await connectAuthenticated(srv.wsUrl, aliceSession.token);
+
+      alice.send({ type: 'room:create', name: 'Room', maxPlayers: 4, isPrivate: false });
+      const { room: { id: roomId } } = await alice.awaitMessage('room:state') as { room: { id: string } };
+
+      let botIds: string[] = [];
+      for (const level of ['easy', 'medium', 'easy'] as const) {
+        alice.send({ type: 'room:addBot', roomId, level });
+        const rs = await alice.awaitMessage('room:state') as {
+          room: { players: Array<{ id: string; bot?: { level: string } }> };
+        };
+        botIds = rs.room.players.filter((p) => p.bot !== undefined).map((p) => p.id);
+      }
+
+      expect(botIds.length).toBe(3);
+      expect(new Set(botIds).size).toBe(3);
+
+      void aliceSession;
+    } finally {
+      alice?.close();
       await srv.close();
     }
   }, 30_000);

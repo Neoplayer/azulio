@@ -16,8 +16,11 @@ import {
   autoMove,
   toPlayerView,
   applyMove,
+  selectMove,
+  BOT_PRESETS,
+  makeRng,
 } from '@azul/engine';
-import type { GameState, Move, PlayerId, PlayerView } from '@azul/shared';
+import type { GameState, Move, PlayerId, PlayerView, BotLevel } from '@azul/shared';
 import type {
   Clock,
   RoomManager,
@@ -30,6 +33,11 @@ import { realClock } from './types.js';
 
 export interface RoomManagerOptions {
   clock?: Clock;
+  /**
+   * @internal — injected in tests to control bot move selection.
+   * Defaults to the engine's `selectMove` when not provided.
+   */
+  _selectMoveFn?: typeof selectMove;
 }
 
 // ---------------------------------------------------------------------------
@@ -48,6 +56,12 @@ export function createRoomManager(options: RoomManagerOptions = {}): RoomManager
 
   // Connection tracking: playerId → connected.
   const connectedMap = new Map<PlayerId, boolean>();
+
+  // Bot tracking: playerId → BotLevel (only for AI players).
+  const botMap = new Map<PlayerId, BotLevel>();
+
+  /** Short artificial delay before a bot submits its move (~750 ms). */
+  const BOT_MOVE_DELAY_MS = 750;
 
   // ---------------------------------------------------------------------------
   // Callbacks — stored on the returned manager object directly.
@@ -103,6 +117,57 @@ export function createRoomManager(options: RoomManagerOptions = {}): RoomManager
     return deadline;
   }
 
+  /**
+   * Schedule the next move for the current player.
+   * - Human players get the standard 60-second timeout (autoMove fallback).
+   * - Bot players get a short artificial delay (~750 ms) then auto-play.
+   * Returns the deadline timestamp sent to clients via onTurn.
+   */
+  function scheduleNextMove(s: GameState): number {
+    const currentPid = s.players[s.currentPlayerIndex]!.id;
+    const botLevel = botMap.get(currentPid);
+
+    if (botLevel !== undefined) {
+      // Bot turn: schedule a short-delay move. Use the same timerHandle slot so
+      // cancelTimer() in applyAndAdvance cleans it up correctly.
+      const capturedSeq = s.turnSeq;
+      const capturedIdx = s.currentPlayerIndex;
+
+      timerHandle = clock.setTimeout(() => {
+        // Race guard: bail if the turn has already advanced.
+        if (state === null || state.turnSeq !== capturedSeq) return;
+        const selectMoveFn = options._selectMoveFn ?? selectMove;
+        const move = selectMoveFn(
+          state,
+          capturedIdx,
+          BOT_PRESETS[botLevel],
+          makeRng((state.rngSeed * 0x9e3779b1 + state.turnSeq) >>> 0),
+        );
+        const err = submitMove(currentPid, move, capturedSeq);
+        if (err !== null) {
+          console.warn(
+            `[bot] selectMove rejected (player=${currentPid}, level=${botLevel}): ${err}; falling back to autoMove`,
+          );
+          if (state !== null && state.turnSeq === capturedSeq) {
+            const fallbackMove = autoMove(state);
+            const fallbackErr = submitMove(currentPid, fallbackMove, capturedSeq);
+            if (fallbackErr !== null) {
+              console.warn(
+                `[bot] autoMove fallback also failed (player=${currentPid}, level=${botLevel}): ${fallbackErr}`,
+              );
+            }
+          }
+        }
+      }, BOT_MOVE_DELAY_MS);
+
+      // Return the full turn deadline so the UI shows a normal countdown.
+      return clock.now() + turnMs;
+    }
+
+    // Human turn: standard auto-move-on-timeout.
+    return scheduleTimer(s);
+  }
+
   function advancePhase(s: GameState): GameState {
     if (s.phase === 'offer' && isOfferPhaseOver(s)) {
       s = resolveTiling(s);
@@ -133,7 +198,7 @@ export function createRoomManager(options: RoomManagerOptions = {}): RoomManager
         mgr.onOver(scores, s.winnerIds ?? []);
       }
     } else {
-      const deadline = scheduleTimer(s);
+      const deadline = scheduleNextMove(s);
       emitState(s);
       const currentPid = s.players[s.currentPlayerIndex]!.id;
       if (mgr.onTurn) mgr.onTurn(currentPid, deadline);
@@ -145,18 +210,22 @@ export function createRoomManager(options: RoomManagerOptions = {}): RoomManager
   // ---------------------------------------------------------------------------
 
   function startGame(
-    playerInfos: { id: string; name: string }[],
+    playerInfos: { id: string; name: string; bot?: { level: BotLevel } }[],
     seed: number,
     turnMsParam: number,
   ): void {
     turnMs = turnMsParam;
     connectedMap.clear();
-    for (const p of playerInfos) connectedMap.set(p.id, true);
+    botMap.clear();
+    for (const p of playerInfos) {
+      connectedMap.set(p.id, true);
+      if (p.bot) botMap.set(p.id, p.bot.level);
+    }
 
     state = createGame(playerInfos, seed);
 
     emitState(state);
-    const deadline = scheduleTimer(state);
+    const deadline = scheduleNextMove(state);
     const currentPid = state.players[state.currentPlayerIndex]!.id;
     if (mgr.onTurn) mgr.onTurn(currentPid, deadline);
   }
