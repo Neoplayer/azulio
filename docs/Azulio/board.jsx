@@ -244,7 +244,7 @@ function HintBar({ sel, hint }) {
   return (
     <div className="az-hint">
       <div className="az-hint-chip">
-        <Tile color={sel.color} size={20} motif="medallion" />
+        <Tile color={sel.color} size={20} motif="unique" />
         <span>{COLOR_RU[sel.color]} ×{sel.count}</span>
       </div>
       <span className="az-hint-step">②</span>

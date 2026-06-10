@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 import type { Color } from '@azul/shared';
-import { GLAZE, type TileMotif } from '../lib/azulejo';
+import { GLAZE, COLOR_MOTIF, type TileMotif } from '../lib/azulejo';
 
 // ── Ornament motifs (drawn in a 0..100 viewBox) ─────────────────────────────
 function MotifMedallion({ stroke, sw }: { stroke: string; sw: number }) {
@@ -73,8 +73,84 @@ function MotifSmooth({ stroke, sw }: { stroke: string; sw: number }) {
   );
 }
 
-function Motif({ name, stroke, sw }: { name: TileMotif; stroke: string; sw: number }) {
+// 8-point octagram (two overlaid squares) with a centred bloom — iron terracotta.
+function MotifStar({ stroke, sw }: { stroke: string; sw: number }) {
+  return (
+    <g fill="none" stroke={stroke} strokeWidth={sw}>
+      <rect x="22" y="22" width="56" height="56" opacity="0.85" />
+      <rect x="22" y="22" width="56" height="56" transform="rotate(45 50 50)" opacity="0.85" />
+      <circle cx="50" cy="50" r="11" />
+      <circle cx="50" cy="50" r="2.8" fill={stroke} stroke="none" />
+    </g>
+  );
+}
+
+// Four-leaf floral cross with diagonal buds — manganese.
+function MotifFleur({ stroke, sw }: { stroke: string; sw: number }) {
+  const leaf = (rot: number) => (
+    <path
+      key={rot}
+      d="M50,50 C40,33 40,18 50,8 C60,18 60,33 50,50 Z"
+      transform={`rotate(${rot} 50 50)`}
+      opacity="0.9"
+    />
+  );
+  const bud = (x: number, y: number) => (
+    <circle key={`${x}-${y}`} cx={x} cy={y} r="3" fill={stroke} stroke="none" opacity="0.85" />
+  );
+  return (
+    <g fill="none" stroke={stroke} strokeWidth={sw}>
+      {[0, 90, 180, 270].map(leaf)}
+      <circle cx="50" cy="50" r="6" />
+      <circle cx="50" cy="50" r="2.4" fill={stroke} stroke="none" />
+      {bud(28, 28)}
+      {bud(72, 28)}
+      {bud(72, 72)}
+      {bud(28, 72)}
+    </g>
+  );
+}
+
+// Radiant sunburst — concentric rings + spokes — copper emerald.
+function MotifSun({ stroke, sw }: { stroke: string; sw: number }) {
+  const rays = [];
+  for (let k = 0; k < 12; k++) {
+    rays.push(
+      <line
+        key={k}
+        x1="50"
+        y1="19"
+        x2="50"
+        y2="30"
+        transform={`rotate(${k * 30} 50 50)`}
+        strokeLinecap="round"
+      />,
+    );
+  }
+  return (
+    <g fill="none" stroke={stroke} strokeWidth={sw}>
+      <circle cx="50" cy="50" r="33" opacity="0.5" />
+      {rays}
+      <circle cx="50" cy="50" r="15" opacity="0.9" />
+      <circle cx="50" cy="50" r="6" />
+      <circle cx="50" cy="50" r="2.6" fill={stroke} stroke="none" />
+    </g>
+  );
+}
+
+function Motif({
+  name,
+  stroke,
+  sw,
+}: {
+  name: Exclude<TileMotif, 'unique'>;
+  stroke: string;
+  sw: number;
+}) {
   if (name === 'lattice') return <MotifLattice stroke={stroke} sw={sw} />;
+  if (name === 'star') return <MotifStar stroke={stroke} sw={sw} />;
+  if (name === 'fleur') return <MotifFleur stroke={stroke} sw={sw} />;
+  if (name === 'sun') return <MotifSun stroke={stroke} sw={sw} />;
   if (name === 'smooth') return <MotifSmooth stroke={stroke} sw={sw} />;
   return <MotifMedallion stroke={stroke} sw={sw} />;
 }
@@ -104,6 +180,8 @@ export function Tile({
   style = {},
 }: TileProps) {
   const g = color ? GLAZE[color] : null;
+  // 'unique' resolves to each colour's own ornament; an explicit name forces it.
+  const motifName = motif === 'unique' ? (color ? COLOR_MOTIF[color] : 'medallion') : motif;
 
   if (empty || !color || !g) {
     return (
@@ -138,7 +216,7 @@ export function Tile({
         }}
       >
         <svg viewBox="0 0 100 100" width="100%" height="100%" style={{ display: 'block', opacity: 0.4 }}>
-          <Motif name={motif} stroke={g.fill} sw={sw} />
+          <Motif name={motifName} stroke={g.fill} sw={sw} />
         </svg>
       </div>
     );
@@ -173,7 +251,7 @@ export function Tile({
         }}
       />
       <svg viewBox="0 0 100 100" width="100%" height="100%" style={{ display: 'block', opacity: 0.72 }}>
-        <Motif name={motif} stroke={g.line} sw={sw} />
+        <Motif name={motifName} stroke={g.line} sw={sw} />
       </svg>
     </div>
   );

@@ -28,4 +28,14 @@ export const WALL: Color[][] = [
 
 export const FLOOR_PENALTY_LABELS = [-1, -1, -2, -2, -2, -3, -3];
 
-export type TileMotif = 'medallion' | 'lattice' | 'smooth';
+/** 'unique' gives every glaze colour its own ornament; the rest force one. */
+export type TileMotif = 'unique' | 'medallion' | 'lattice' | 'star' | 'fleur' | 'sun' | 'smooth';
+
+/** Per-colour ceramic motif, used when a tile's motif is 'unique'. */
+export const COLOR_MOTIF: Record<Color, Exclude<TileMotif, 'unique'>> = {
+  blue: 'medallion', // cobalt rosette
+  yellow: 'lattice', // antimony quatrefoil
+  red: 'star', // iron octagram
+  black: 'fleur', // manganese four-leaf cross
+  white: 'sun', // copper sunburst
+};

@@ -6,7 +6,7 @@ import { WALL, COLOR_RU, GLAZE, type TileMotif } from '../../lib/azulejo';
 import { legalRowsFor, isMyTurn, myBoard } from '../../lib/moves';
 import { useStore } from '../../store';
 
-const MOTIF: TileMotif = 'medallion';
+const MOTIF: TileMotif = 'unique';
 const TURN_MS = 60_000;
 
 // ── Background tracery ──────────────────────────────────────────────────────
@@ -53,8 +53,50 @@ function useCountdown(deadline: number | null): number {
   return Math.max(0, Math.round((deadline - Date.now()) / 1000));
 }
 
+function GameMenu({ onClose }: { onClose: () => void }) {
+  const [confirmLeave, setConfirmLeave] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div className="az-menu-overlay" onClick={onClose}>
+      <div className="az-menu-card" onClick={(e) => e.stopPropagation()}>
+        {!confirmLeave ? (
+          <>
+            <div className="az-menu-title">Меню</div>
+            <button className="az-btn az-btn-cobalt" onClick={onClose}>
+              Продолжить
+            </button>
+            <button className="az-btn az-btn-ghost" onClick={() => setConfirmLeave(true)}>
+              Покинуть игру
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="az-menu-title">Покинуть игру?</div>
+            <p className="az-menu-text">Вы вернётесь в лобби, текущая партия будет покинута.</p>
+            <button className="az-btn az-btn-gold" onClick={() => useStore.getState().leaveRoom()}>
+              Да, покинуть
+            </button>
+            <button className="az-btn az-btn-ghost" onClick={() => setConfirmLeave(false)}>
+              Отмена
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AppBar({ round, deadline, yourTurn }: { round: number; deadline: number | null; yourTurn: boolean }) {
   const secs = useCountdown(deadline);
+  const [menuOpen, setMenuOpen] = useState(false);
   const urgent = yourTurn && secs <= 10;
   const mm = Math.floor(secs / 60);
   const ss = String(secs % 60).padStart(2, '0');
@@ -87,11 +129,12 @@ function AppBar({ round, deadline, yourTurn }: { round: number; deadline: number
           {yourTurn ? 'ВАШ ХОД' : 'ХОД СОПЕРНИКА'}
         </span>
       </div>
-      <button className="az-menu" aria-label="Меню" onClick={() => useStore.getState().leaveRoom()}>
+      <button className="az-menu" aria-label="Меню" onClick={() => setMenuOpen(true)}>
         <span></span>
         <span></span>
         <span></span>
       </button>
+      {menuOpen && <GameMenu onClose={() => setMenuOpen(false)} />}
     </div>
   );
 }
