@@ -53,4 +53,4 @@ COPY --from=build /app/packages/server/dist  ./packages/server/dist
 
 EXPOSE 8080
 
-CMD ["node", "packages/server/dist/main.js"]
+CMD ["node", "--conditions=azulprod", "packages/server/dist/main.js"]

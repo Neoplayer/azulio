@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/main.js"
+    "start": "node --conditions=azulprod dist/main.js"
   },
   "dependencies": {
     "@azul/engine": "*",
