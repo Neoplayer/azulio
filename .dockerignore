@@ -1,0 +1,31 @@
+# Dependencies — reinstalled inside the image
+node_modules
+packages/*/node_modules
+
+# Compiled output — rebuilt inside the image
+dist
+packages/*/dist
+
+# Version control
+.git
+.gitignore
+
+# Test files — not needed in the image
+*.test.ts
+*.spec.ts
+
+# Old trial project
+azul-web
+
+# OMC / agent state
+.omc
+
+# Dev screenshots and scratch files
+screenshots
+*.png
+paper_azul.py
+paper_azul.ts
+
+# Editor / OS artefacts
+.DS_Store
+*.swp

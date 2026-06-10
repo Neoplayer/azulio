@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Azul Online — Игра</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+:root {
+  --az-cobalt: #1B3A6B;
+  --az-cobalt-deep: #0F2143;
+  --az-cobalt-2: #234C86;
+  --az-porcelain: #F5F2EB;
+  --az-porcelain-2: #ECE5D6;
+  --az-gold: #C9A24B;
+  --az-gold-deep: #A8842F;
+  --az-terracotta: #9C4A2F;
+  --az-emerald: #2E6B5E;
+  --az-ink: #1A2740;
+  --az-ink-2: #59607340;
+  --az-muted: #6B7286;
+  --az-line: rgba(27,58,107,0.10);
+  --font-display: 'Playfair Display', Georgia, serif;
+  --font-body: 'Manrope', system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0; padding: 0;
+  background: #cdc4b2;
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* studio backdrop behind the device */
+.stage {
+  min-height: 100vh; width: 100%;
+  display: flex; align-items: center; justify-content: center;
+  padding: 40px 20px;
+  background:
+    radial-gradient(120% 80% at 50% 0%, #e7e0d0, #cabfa9 70%, #b6ab93);
+}
+
+/* ── App shell inside the phone ── */
+.az-app {
+  position: relative;
+  min-height: 100%;
+  background: var(--az-cobalt-deep);
+  color: var(--az-ink);
+  font-family: var(--font-body);
+  padding: 0 14px 36px;
+  overflow: hidden;
+}
+.az-bg-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+.az-app > *:not(.az-bg-svg) { position: relative; z-index: 1; }
+
+/* ── App bar ── */
+.az-appbar {
+  position: sticky; top: 0; z-index: 30;
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+  padding: 52px 2px 12px;
+  margin: 0 -14px 4px; padding-left: 16px; padding-right: 16px;
+  background: linear-gradient(180deg, var(--az-cobalt-deep) 62%, rgba(15,33,67,0) 100%);
+}
+.az-round { display: flex; flex-direction: column; line-height: 1; }
+.az-round-k { font-size: 9px; letter-spacing: 2.5px; color: var(--az-gold); font-weight: 700; }
+.az-round-n { font-family: var(--font-display); font-size: 30px; font-weight: 700; color: var(--az-porcelain); margin-top: 1px; }
+
+.az-turn { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.az-timer { position: relative; width: 44px; height: 44px; }
+.az-timer-ring { width: 44px; height: 44px; transform: rotate(-90deg); }
+.az-timer-track { fill: none; stroke: rgba(245,242,235,0.12); stroke-width: 3; }
+.az-timer-fill { fill: none; stroke: var(--az-gold); stroke-width: 3; stroke-linecap: round; }
+.az-timer-num { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-weight: 600; font-size: 14px; color: var(--az-porcelain); letter-spacing: 0.3px; }
+.az-turn-label { font-size: 8.5px; letter-spacing: 2px; font-weight: 700; color: var(--az-emerald); filter: brightness(1.5); }
+
+.az-menu { justify-self: end; width: 36px; height: 36px; border: none; cursor: pointer;
+  background: rgba(245,242,235,0.06); border-radius: 999px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; }
+.az-menu span { width: 4px; height: 4px; border-radius: 999px; background: var(--az-porcelain); opacity: 0.8; }
+
+/* ── Cards / sections ── */
+.az-card {
+  background: var(--az-porcelain);
+  border-radius: 18px;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.5) inset, 0 6px 18px rgba(8,18,40,0.32);
+}
+.az-frames .az-card { box-shadow: 0 0 0 1px var(--az-gold) inset, 0 0 0 4px var(--az-porcelain) inset, 0 0 0 5px rgba(201,162,75,0.4) inset, 0 6px 18px rgba(8,18,40,0.32); }
+
+.az-section { margin-top: 16px; }
+
+.az-sechead { display: flex; align-items: flex-end; justify-content: space-between; margin: 0 2px 9px; }
+.az-sechead-l { display: flex; align-items: center; gap: 9px; }
+.az-sechead-n { font-family: var(--font-display); font-size: 13px; font-weight: 700; color: var(--az-gold);
+  border: 1px solid rgba(201,162,75,0.5); border-radius: 8px; padding: 3px 6px; line-height: 1; letter-spacing: 0.5px; }
+.az-sechead-txt { display: flex; flex-direction: column; line-height: 1.05; }
+.az-sechead-t { font-size: 12.5px; font-weight: 800; letter-spacing: 2px; color: var(--az-porcelain); }
+.az-sechead-s { font-size: 9.5px; color: rgba(245,242,235,0.5); letter-spacing: 0.4px; margin-top: 2px; }
+
+/* ── Opponent strip ── */
+.az-opp { display: flex; align-items: center; gap: 12px; padding: 11px 14px; }
+.az-opp-id { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+.az-avatar { width: 34px; height: 34px; border-radius: 999px; flex-shrink: 0;
+  background: var(--az-terracotta); color: var(--az-porcelain);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-weight: 700; font-size: 17px;
+  box-shadow: 0 0 0 2px rgba(201,162,75,0.6); }
+.az-opp-meta { min-width: 0; }
+.az-opp-name { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 14px; color: var(--az-ink); }
+.az-opp-sub { font-size: 10px; color: var(--az-muted); margin-top: 1px; }
+.az-dot { width: 7px; height: 7px; border-radius: 999px; display: inline-block; }
+.az-dot-on { background: var(--az-emerald); box-shadow: 0 0 0 2px rgba(46,107,94,0.2); }
+.az-dot-off { background: #c0392b; }
+
+.az-miniwall { display: grid; grid-template-columns: repeat(5, 8px); grid-auto-rows: 8px; gap: 1.5px; flex-shrink: 0;
+  padding: 4px; background: rgba(27,58,107,0.05); border-radius: 6px; }
+.az-minicell { border-radius: 1.5px; box-shadow: inset 0 0 0 0.5px rgba(0,0,0,0.06); }
+
+.az-opp-stats { text-align: right; flex-shrink: 0; }
+.az-opp-score { font-family: var(--font-display); font-weight: 700; font-size: 24px; color: var(--az-cobalt); line-height: 1; }
+.az-opp-score-k { font-size: 8.5px; letter-spacing: 1.5px; color: var(--az-muted); text-transform: uppercase; }
+.az-opp-floor { font-size: 9.5px; color: var(--az-terracotta); font-weight: 700; margin-top: 4px; }
+
+/* ── Market ── */
+.az-factories { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
+.az-factory { position: relative; background: var(--az-porcelain); border-radius: 16px; padding: 9px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.6) inset, 0 4px 12px rgba(8,18,40,0.3); }
+.az-factory-tag { position: absolute; top: -6px; left: -5px; width: 17px; height: 17px; border-radius: 999px;
+  background: var(--az-cobalt); color: var(--az-porcelain); font-size: 10px; font-weight: 800;
+  display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px var(--az-porcelain); z-index: 2; }
+.az-factory-tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; }
+.az-factory-sel { box-shadow: 0 0 0 2px var(--az-gold), 0 0 14px rgba(201,162,75,0.45), 0 4px 12px rgba(8,18,40,0.3); }
+
+.az-center { margin-top: 10px; background: rgba(245,242,235,0.06); border: 1px solid rgba(201,162,75,0.28);
+  border-radius: 16px; padding: 11px 12px; }
+.az-center-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.az-center-k { font-size: 10px; font-weight: 800; letter-spacing: 1.5px; color: var(--az-porcelain); }
+.az-center-note { font-size: 9px; color: var(--az-gold); font-style: italic; }
+.az-center-tiles { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.az-first-token { width: 24px; height: 24px; border-radius: 6px; background: var(--az-gold);
+  color: var(--az-cobalt-deep); font-family: var(--font-display); font-weight: 800; font-size: 14px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: inset 1px 1px 1px rgba(255,255,255,0.5), inset -1px -1px 1px rgba(0,0,0,0.2), 0 1px 2px rgba(0,0,0,0.3); }
+
+/* ── Player board ── */
+.az-myscore { display: flex; flex-direction: column; align-items: flex-end; line-height: 1; }
+.az-myscore-n { font-family: var(--font-display); font-weight: 800; font-size: 30px; color: var(--az-gold); }
+.az-myscore-k { font-size: 8.5px; letter-spacing: 2px; color: rgba(245,242,235,0.55); text-transform: uppercase; margin-top: 1px; }
+
+.az-boardcard { padding: 14px; }
+.az-board-grid { display: flex; align-items: flex-start; gap: 0; }
+.az-board-col { display: flex; flex-direction: column; gap: 7px; }
+.az-board-div { width: 1px; align-self: stretch; margin: 18px 8px 0;
+  background: linear-gradient(180deg, transparent, rgba(201,162,75,0.55), transparent); }
+.az-col-label { font-size: 8.5px; font-weight: 800; letter-spacing: 1.5px; color: var(--az-muted); margin-bottom: 1px; }
+
+.az-pattern { display: flex; flex-direction: column; gap: 4px; }
+.az-pline { position: relative; padding: 2px; border-radius: 8px; }
+.az-pline-track { display: flex; gap: 4px; justify-content: flex-end; width: 146px; }
+.az-legal { background: rgba(201,162,75,0.14); box-shadow: 0 0 0 1.5px var(--az-gold); animation: az-pulse 1.7s ease-in-out infinite; }
+.az-legal-arrow { position: absolute; right: -11px; top: 50%; transform: translateY(-50%);
+  color: var(--az-gold); font-weight: 800; font-size: 15px; }
+@keyframes az-pulse { 0%,100% { box-shadow: 0 0 0 1.5px var(--az-gold), 0 0 0 0 rgba(201,162,75,0.4); } 50% { box-shadow: 0 0 0 1.5px var(--az-gold), 0 0 9px 1px rgba(201,162,75,0.55); } }
+
+.az-wall { display: flex; flex-direction: column; gap: 4px; }
+.az-wall-row { display: flex; gap: 4px; }
+
+.az-floor { margin-top: 13px; border-top: 1px solid var(--az-line); padding-top: 10px; }
+.az-floor-label { font-size: 8.5px; font-weight: 800; letter-spacing: 1.5px; color: var(--az-muted); margin-bottom: 6px; }
+.az-floor-cells { display: flex; gap: 4px; }
+.az-floor-cell { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.az-floor-slot { width: 24px; height: 24px; }
+.az-floor-pen { font-size: 9px; font-weight: 700; color: var(--az-muted); }
+.az-first-floor { width: 24px; height: 24px; }
+
+/* ── Hint bar ── */
+.az-hint { position: sticky; bottom: 0; z-index: 25; margin: 16px -14px -36px; padding: 13px 16px 26px;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: linear-gradient(0deg, var(--az-cobalt-deep) 55%, rgba(15,33,67,0));
+  font-size: 12px; color: var(--az-porcelain); font-weight: 500; }
+.az-hint b { color: var(--az-gold); }
+.az-hint-idle { color: rgba(245,242,235,0.7); }
+.az-hint-step { width: 19px; height: 19px; border-radius: 999px; background: var(--az-gold); color: var(--az-cobalt-deep);
+  font-weight: 800; font-size: 12px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.az-hint-chip { display: flex; align-items: center; gap: 6px; background: rgba(245,242,235,0.1);
+  border: 1px solid rgba(201,162,75,0.4); border-radius: 999px; padding: 4px 11px 4px 5px; font-weight: 700; }
+
+@media (prefers-reduced-motion: reduce) { .az-legal { animation: none; } }
+</style>
+</head>
+<body>
+<div class="stage" id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="ios-frame.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="tiles.jsx"></script>
+<script type="text/babel" src="board.jsx"></script>
+<script type="text/babel" data-presets="react">
+// ── Concrete mid-game position (2 players, round 2, your turn) ───────────────
+// You have just tapped the 3 blue tiles in factory #2; legal pattern rows glow.
+const GAME = {
+  round: 2,
+  timer: '0:47',
+  factories: [
+    ['white', 'white', 'red', 'yellow'],
+    ['blue', 'blue', 'blue', 'yellow'],   // selected source
+    ['black', 'red', 'red', 'white'],
+    ['yellow', 'black', 'blue', 'white'],
+    ['red', 'red', 'black', 'white'],
+  ],
+  center: ['yellow', 'black', 'white', 'red', 'yellow'],
+  centerHasFirst: false,                  // token already taken (it sits on your floor)
+  you: {
+    name: 'Вы', score: 21,
+    patternLines: [
+      [],                                 // row0  cap1  empty   → legal for blue
+      ['red', 'red'],                     // row1  cap2  full
+      ['yellow'],                         // row2  cap3  1/3
+      [],                                 // row3  cap4  empty   → legal for blue
+      ['black', 'black', 'black'],        // row4  cap5  3/5
+    ],
+    wall: [
+      [null, null, null, null, null],
+      [null, null, 'yellow', null, 'black'],
+      [null, 'white', 'blue', null, null],
+      [null, null, null, null, null],
+      [null, 'red', null, null, null],
+    ],
+    floor: ['FIRST'],                     // holds first-player token (−1)
+  },
+  opp: {
+    name: 'Лена', score: 18, connected: true, floorPenalty: 1,
+    wall: [
+      ['blue', 'yellow', 'red', 'black', null], // 4/5 — one tile from ending the game
+      [null, 'blue', null, null, null],
+      [null, null, 'blue', null, null],
+      [null, null, null, null, 'yellow'],
+      [null, null, null, null, null],
+    ],
+  },
+};
+
+const SELECTION = { factory: 1, color: 'blue', count: 3 };
+const LEGAL_ROWS = [0, 3];
+
+// ── Background tracery (azulejo net), drawn as SVG <pattern> ────────────────
+function BgPattern({ kind }) {
+  if (kind === 'plain') {
+    return (
+      <svg className="az-bg-svg" preserveAspectRatio="none">
+        <defs>
+          <radialGradient id="bgGlow" cx="50%" cy="0%" r="90%">
+            <stop offset="0%" stopColor="#234C86" stopOpacity="0.55" />
+            <stop offset="55%" stopColor="#0F2143" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#bgGlow)" />
+      </svg>
+    );
+  }
+  const line = 'rgba(245,242,235,0.06)';
+  const gold = 'rgba(201,162,75,0.07)';
+  return (
+    <svg className="az-bg-svg" preserveAspectRatio="xMidYMin slice">
+      <defs>
+        <radialGradient id="bgGlow" cx="50%" cy="0%" r="85%">
+          <stop offset="0%" stopColor="#234C86" stopOpacity="0.5" />
+          <stop offset="60%" stopColor="#0F2143" stopOpacity="0" />
+        </radialGradient>
+        {kind === 'diamonds' ? (
+          <pattern id="bgPat" width="46" height="46" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <rect width="46" height="46" fill="none" />
+            <path d="M0 23 H46 M23 0 V46" stroke={line} strokeWidth="1" />
+            <circle cx="23" cy="23" r="2" fill={gold} />
+          </pattern>
+        ) : (
+          <pattern id="bgPat" width="56" height="56" patternUnits="userSpaceOnUse">
+            <path d="M28 -28 A40 40 0 0 1 -28 28 M28 84 A40 40 0 0 1 84 28 M84 84 A40 40 0 0 1 28 84 M-28 28 A40 40 0 0 1 28 84"
+              fill="none" stroke={line} strokeWidth="1.1" />
+            <path d="M28 0 A28 28 0 0 1 56 28 A28 28 0 0 1 28 56 A28 28 0 0 1 0 28 A28 28 0 0 1 28 0 Z"
+              fill="none" stroke={gold} strokeWidth="0.8" />
+          </pattern>
+        )}
+      </defs>
+      <rect width="100%" height="100%" fill="url(#bgPat)" />
+      <rect width="100%" height="100%" fill="url(#bgGlow)" />
+    </svg>
+  );
+}
+
+// ── Tweak defaults ──────────────────────────────────────────────────────────
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "tileMotif": "medallion",
+  "background": "tracery",
+  "goldFrames": true,
+  "moveHint": true
+}/*EDITMODE-END*/;
+
+const MOTIF_LABELS = { 'Медальон': 'medallion', 'Решётка': 'lattice', 'Гладкая': 'smooth' };
+const BG_LABELS = { 'Кружево': 'tracery', 'Ромбы': 'diamonds', 'Гладкий': 'plain' };
+
+function GameScreen({ t }) {
+  return (
+    <div className={'az-app' + (t.goldFrames ? ' az-frames' : '')}>
+      <BgPattern kind={t.background} />
+      <AppBar round={GAME.round} timer={GAME.timer} urgent={false} />
+      <OpponentStrip opp={GAME.opp} motif={t.tileMotif} />
+      <Market
+        factories={GAME.factories} center={GAME.center} hasFirst={GAME.centerHasFirst}
+        motif={t.tileMotif} sel={SELECTION} hint={t.moveHint} />
+      <PlayerBoard you={GAME.you} motif={t.tileMotif} legalRows={LEGAL_ROWS} hint={t.moveHint} />
+      <HintBar sel={SELECTION} hint={t.moveHint} />
+    </div>
+  );
+}
+
+function keyOf(map, val) { return Object.keys(map).find(k => map[k] === val) || Object.keys(map)[0]; }
+
+function App() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  return (
+    <React.Fragment>
+      <IOSDevice>
+        <GameScreen t={t} />
+      </IOSDevice>
+
+      <TweaksPanel>
+        <TweakSection label="Изразцы" />
+        <TweakRadio label="Орнамент плитки"
+          value={keyOf(MOTIF_LABELS, t.tileMotif)}
+          options={Object.keys(MOTIF_LABELS)}
+          onChange={(v) => setTweak('tileMotif', MOTIF_LABELS[v])} />
+
+        <TweakSection label="Фон и оправа" />
+        <TweakRadio label="Узор фона"
+          value={keyOf(BG_LABELS, t.background)}
+          options={Object.keys(BG_LABELS)}
+          onChange={(v) => setTweak('background', BG_LABELS[v])} />
+        <TweakToggle label="Золотые рамки панелей" value={t.goldFrames}
+          onChange={(v) => setTweak('goldFrames', v)} />
+
+        <TweakSection label="Состояние хода" />
+        <TweakToggle label="Подсветка выбора (2 тапа)" value={t.moveHint}
+          onChange={(v) => setTweak('moveHint', v)} />
+      </TweaksPanel>
+    </React.Fragment>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
