@@ -15,7 +15,14 @@ COPY package.json package-lock.json ./
 COPY packages/web/package.json      ./packages/web/
 
 # Install all workspace dependencies (includes devDeps needed for the build).
-RUN npm ci
+# A lockfile generated on a non-musl host omits the installable package node
+# for Rollup's platform-specific native dep (@rollup/rollup-linux-x64-musl on
+# this Alpine image). With that lockfile present, both `npm ci` and `npm install`
+# reproduce the omission, so `vite build` crashes with
+# "Cannot find module '@rollup/rollup-linux-x64-musl'" (npm bug npm/cli#4828).
+# Drop the lockfile and resolve fresh for THIS platform so the matching native
+# binary is fetched.
+RUN rm -f package-lock.json && npm install --no-audit --no-fund
 
 # Copy sources needed to bundle the web app.
 COPY tsconfig.base.json ./
