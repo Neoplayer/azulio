@@ -1,4 +1,4 @@
-import type { Color, PlayerView, Move } from '@azul/shared';
+import type { Color, PlayerView, Move } from '../wire';
 import { WALL } from './azulejo';
 
 /** The board belonging to the receiving player (`view.you`). */

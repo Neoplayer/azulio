@@ -1,7 +1,7 @@
 # Azul WebSocket Protocol Reference
 
-All schemas are defined in `packages/shared/src/protocol.ts` and validated at runtime with zod.
-This document is derived directly from that source — if they diverge, the code wins.
+All message types are defined in `azul-server/crates/shared/src/protocol.rs` (and re-exported via `lib.rs`) as serde-tagged enums, and validated at the gateway boundary in `ws_gateway.rs`.
+TypeScript equivalents are generated from that source by ts-rs into `packages/web/src/generated/` — if this document and the Rust source diverge, the Rust source wins.
 
 ---
 
@@ -257,7 +257,7 @@ The current game state, redacted for the receiving player. Sent after `room:star
 | `type` | `"game:state"` | — |
 | `view` | `PlayerView` | See PlayerView shape below. |
 
-**PlayerView shape** (built by `engine.toPlayerView(state, playerId)`):
+**PlayerView shape** (built by `to_player_view(state, player_id)` in `azul-engine`):
 
 | Field | Type | Notes |
 |---|---|---|

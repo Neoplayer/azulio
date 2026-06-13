@@ -1,0 +1,14 @@
+[package]
+name = "azul-shared"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+# Generates the TypeScript wire types consumed by the web client. The
+# `export_bindings_*` tests (run via `cargo test`) write them to the directory
+# named by TS_RS_EXPORT_DIR (see ../../.cargo/config.toml). This crate is the
+# single source of truth for the protocol; the web types are generated, never
+# hand-edited.
+ts-rs = "10"

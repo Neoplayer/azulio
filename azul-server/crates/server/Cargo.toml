@@ -1,0 +1,24 @@
+[package]
+name = "azul-server"
+edition.workspace = true
+version.workspace = true
+
+[[bin]]
+name = "azul-server"
+path = "src/main.rs"
+
+[dependencies]
+azul-shared = { workspace = true }
+azul-engine = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { version = "1", features = ["full"] }
+axum = { version = "0.8", features = ["ws"] }
+uuid = { version = "1", features = ["v4"] }
+futures = "0.3"
+
+[dev-dependencies]
+# `test-util` enables tokio's paused-clock (`start_paused`, `time::advance`) so
+# turn timers fire deterministically in tests without real waiting.
+tokio = { version = "1", features = ["full", "test-util"] }
+tokio-tungstenite = "0.24"

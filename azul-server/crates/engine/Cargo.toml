@@ -1,0 +1,9 @@
+[package]
+name = "azul-engine"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+azul-shared = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

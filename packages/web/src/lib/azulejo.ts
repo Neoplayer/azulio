@@ -1,4 +1,4 @@
-import type { Color } from '@azul/shared';
+import type { Color } from '../wire';
 
 /** Historic azulejo glaze per game colour: fill + contrasting motif line. */
 export const GLAZE: Record<Color, { fill: string; line: string }> = {
