@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { BotLevel, Color, Move, PlayerView, Room, ServerMessage, ClientMessage } from '@azul/shared';
+import type { BotLevel, Color, Move, PlayerView, Room, ServerMessage, ClientMessage } from './wire';
 import { createSession, wsUrl } from './lib/api';
 
 export type Screen = 'login' | 'lobby' | 'room' | 'game' | 'results';

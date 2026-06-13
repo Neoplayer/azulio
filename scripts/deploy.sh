@@ -79,6 +79,7 @@ rsync -az --delete \
   --exclude='azul-web' \
   --exclude='*.png' \
   --exclude='.env' \
+  --exclude='azul-server/target' \
   -e "ssh ${SSH_OPTS[*]}" \
   ./ "${SSH_TARGET}:${REMOTE_DIR}/"
 ok "source synced"

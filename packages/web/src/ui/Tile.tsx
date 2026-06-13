@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import type { Color } from '@azul/shared';
+import type { Color } from '../wire';
 import { GLAZE, COLOR_MOTIF, type TileMotif } from '../lib/azulejo';
 
 // ── Ornament motifs (drawn in a 0..100 viewBox) ─────────────────────────────

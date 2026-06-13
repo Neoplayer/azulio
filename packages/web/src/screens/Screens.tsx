@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { BotLevel } from '@azul/shared';
+import type { BotLevel } from '../wire';
 import { useStore } from '../store';
 
 const BOT_LEVELS: { level: BotLevel; label: string }[] = [

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import type { Color, PlayerView, PlayerBoard, Move } from '@azul/shared';
-import { FLOOR_PENALTIES } from '@azul/shared';
+import type { Color, PlayerView, PlayerBoard, Move } from '../../wire';
+import { FLOOR_PENALTIES } from '../../wire';
 import { Tile } from '../Tile';
 import { WALL, COLOR_RU, GLAZE, type TileMotif } from '../../lib/azulejo';
 import { legalRowsFor, isMyTurn, myBoard } from '../../lib/moves';
